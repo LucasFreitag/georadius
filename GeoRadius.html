@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GeoRadius — Explorador de Distâncias</title>
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-color: #0f172a;
+      --panel-bg: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #0ea5e9;
+      --accent-hover: #0284c7;
+      --border: #334155;
+      --radius: 12px;
+      --shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    header { padding: 1rem 1.5rem; background: var(--panel-bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; z-index: 10; }
+    .logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .logo-mark svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2; }
+    header h1 { font-family: 'DM Serif Display', serif; font-size: 1.3rem; font-weight: 400; color: var(--text-main); }
+    header span { font-size: 0.8rem; color: var(--text-muted); }
+
+    .layout { display: flex; flex: 1; height: calc(100vh - 65px); flex-direction: row; }
+
+    .sidebar { width: 360px; background: var(--panel-bg); display: flex; flex-direction: column; border-right: 1px solid var(--border); z-index: 10; }
+    
+    .controls { padding: 1.5rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .field label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; }
+    
+    .input-wrap { position: relative; margin-bottom: 1rem; }
+    .input-wrap input { width: 100%; padding: 0.8rem 1rem 0.8rem 2.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-color); color: var(--text-main); font-family: inherit; font-size: 0.95rem; outline: none; transition: 0.2s; }
+    .input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(14,165,233,0.2); }
+    .input-wrap > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: var(--text-muted); fill: none; stroke-width: 2; }
+
+    .autocomplete-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--panel-bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 1000; max-height: 200px; overflow-y: auto; display: none; }
+    .autocomplete-list.show { display: block; }
+    .autocomplete-item { padding: 0.8rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: 0.1s; display: flex; flex-direction: column; }
+    .autocomplete-item:hover { background: var(--border); }
+    .ac-title { font-size: 0.9rem; font-weight: 500; }
+    .ac-sub { font-size: 0.75rem; color: var(--text-muted); }
+
+    .distance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .distance-grid button { padding: 0.7rem; background: var(--bg-color); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: 0.2s; }
+    .distance-grid button:hover { background: var(--border); border-color: var(--text-muted); }
+    .distance-grid button.btn-accent { grid-column: 1 / -1; background: #334155; color: #cbd5e1; border-style: dashed; }
+    .distance-grid button.btn-accent:hover { background: #475569; }
+
+    .pins-section { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
+    .pins-header { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.8rem; }
+    
+    .pin-card { background: var(--bg-color); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.8rem; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .pin-info { display: flex; align-items: center; gap: 10px; }
+    .pin-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .pin-title { font-size: 0.9rem; font-weight: 500; }
+    .pin-sub { font-size: 0.75rem; color: var(--text-muted); }
+    .btn-remove { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; }
+    .btn-remove svg { width: 16px; height: 16px; stroke: #ef4444; fill: none; stroke-width: 2; }
+    .btn-remove:hover { background: rgba(239, 68, 68, 0.1); }
+
+    .map-wrap { flex: 1; position: relative; }
+    #map { width: 100%; height: 100%; background: #0f172a; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; height: calc(100vh - 60px); }
+      .map-wrap { flex: 1; }
+      .sidebar { width: 100%; height: 45vh; border-right: none; border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.5); z-index: 1000; }
+      .controls { padding: 1rem; }
+      .pins-section { padding: 1rem; }
+    }
+
+    .leaflet-popup-content-wrapper { background: var(--panel-bg); color: var(--text-main); border-radius: 8px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+    .leaflet-popup-tip { background: var(--panel-bg); }
+    .popup-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 2px; }
+    .popup-sub { font-size: 0.8rem; color: var(--text-muted); }
+
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-50px); background: var(--accent); color: #fff; padding: 0.6rem 1.2rem; border-radius: 30px; font-size: 0.85rem; font-weight: 500; z-index: 9999; transition: transform 0.3s ease, opacity 0.3s ease; opacity: 0; pointer-events: none; }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+  </div>
+  <h1>GeoRadius <span>Pro</span></h1>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="controls">
+      <div class="field">
+        <label>1. Buscar Cidade / País</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+          <input type="text" id="city-input" placeholder="Ex: São Paulo, Brasil" autocomplete="off">
+          <div class="autocomplete-list" id="autocomplete"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>2. Aplicar Raio de Distância</label>
+        <div class="distance-grid">
+          <button onclick="createPin(0, 800)">0 - 800 km</button>
+          <button onclick="createPin(801, 1499)">801 - 1499 km</button>
+          <button onclick="createPin(1500, 2499)">1500 - 2499 km</button>
+          <button onclick="createPin(2500, 5000)">2500 - 5000 km</button>
+          <button class="btn-accent" onclick="createPin(5000, 999999)">+ 5000 km (Área Externa)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pins-section">
+      <div class="pins-header">Pins Adicionados</div>
+      <div id="pins-list"></div>
+    </div>
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Aviso!</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+<script>
+const PIN_COLORS = ['#0ea5e9', '#f59e0b', '#10b981', '#a855f7', '#ef4444'];
+
+let map, tempOrigin = null, tempMarker = null;
+let pins = [];
+let intersectionLayer = null;
+
+map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+const cityInput = document.getElementById('city-input');
+const autocompleteList = document.getElementById('autocomplete');
+const pinsList = document.getElementById('pins-list');
+
+let searchTimeout;
+cityInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  const q = cityInput.value.trim();
+  if (q.length < 3) { autocompleteList.classList.remove('show'); return; }
+  searchTimeout = setTimeout(() => fetchCity(q), 400);
+});
+
+async function fetchCity(q) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1`);
+    const data = await res.json();
+    autocompleteList.innerHTML = '';
+    data.forEach(r => {
+      const city = r.name;
+      const subtitle = [r.address.state, r.address.country].filter(Boolean).join(', ');
+      
+      const div = document.createElement('div');
+      div.className = 'autocomplete-item';
+      div.innerHTML = `<div class="ac-title">${city}</div><div class="ac-sub">${subtitle}</div>`;
+      
+      div.onclick = () => selectCity(city, subtitle, parseFloat(r.lat), parseFloat(r.lon));
+      autocompleteList.appendChild(div);
+    });
+    if(data.length) autocompleteList.classList.add('show');
+  } catch (err) {}
+}
+
+function selectCity(name, subtitle, lat, lng) {
+  cityInput.value = `${name}, ${subtitle}`;
+  autocompleteList.classList.remove('show');
+  
+  tempOrigin = { name, lat, lng };
+  
+  if(tempMarker) map.removeLayer(tempMarker);
+  
+  tempMarker = L.marker([lat, lng], {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;background:#fff;border:3px solid #333;border-radius:50%;box-shadow:0 0 10px rgba(255,255,255,0.5)"></div>`,
+      iconSize:[14,14], iconAnchor:[7,7]
+    })
+  }).addTo(map);
+
+  map.flyTo([lat, lng], 5, { duration: 1.5 });
+  showToast(`Cidade selecionada! Agora aplique uma distância.`);
+}
+
+function createSafeCircle(center, radius, steps) {
+  const circle = turf.circle(center, radius, { steps: steps, units: 'kilometers' });
+  
+  circle.geometry.coordinates[0].forEach(coord => {
+    if (coord[1] > 85.05) coord[1] = 85.05;
+    if (coord[1] < -85.05) coord[1] = -85.05;
+  });
+  
+  return circle;
+}
+
+function createPin(minKm, maxKm) {
+  if (!tempOrigin) {
+    showToast("Por favor, pesquise e selecione uma cidade primeiro!");
+    return;
+  }
+
+  const id = Date.now();
+  const color = PIN_COLORS[pins.length % PIN_COLORS.length];
+  const { name, lat, lng } = tempOrigin;
+
+  if(tempMarker) map.removeLayer(tempMarker);
+  tempOrigin = null; 
+  cityInput.value = ''; 
+
+  const marker = L.marker([lat, lng], {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,0.5)"></div>`,
+      iconSize:[16,16], iconAnchor:[8,8]
+    })
+  }).addTo(map);
+  
+  marker.bindPopup(`<div class="popup-title">${name}</div><div class="popup-sub">Raio: ${minKm} a ${maxKm === 999999 ? 'Infinito' : maxKm} km</div>`);
+
+  const STEPS = 2048; 
+  
+  let outerCircle = null;
+  if (maxKm !== 999999) {
+    const outerGeo = createSafeCircle([lng, lat], maxKm, STEPS);
+    outerCircle = L.geoJSON(outerGeo, {
+      style: { color: color, fillColor: color, fillOpacity: 0.1, weight: 2 }
+    }).addTo(map);
+  }
+
+  let innerCircle = null;
+  if (minKm > 0) {
+    const innerGeo = createSafeCircle([lng, lat], minKm, STEPS);
+    innerCircle = L.geoJSON(innerGeo, {
+      style: { 
+        color: color, 
+        fillColor: maxKm === 999999 ? 'transparent' : '#0f172a', 
+        fillOpacity: maxKm === 999999 ? 0 : 1, 
+        weight: 1.5, 
+        dashArray: '3 4' 
+      }
+    }).addTo(map);
+  }
+
+  const pin = { 
+    id, name, coords: {lat, lng}, minKm, maxKm, color,
+    layers: [marker, outerCircle, innerCircle].filter(Boolean) 
+  };
+  pins.push(pin);
+  
+  updateSidebar();
+  updateIntersection();
+  
+  if (outerCircle) {
+    map.fitBounds(outerCircle.getBounds(), { padding: [20,20] });
+  } else if (innerCircle) {
+    map.fitBounds(innerCircle.getBounds(), { padding: [20,20] });
+  }
+}
+
+function updateIntersection() {
+  if (intersectionLayer) map.removeLayer(intersectionLayer);
+  
+  if (pins.length < 2) return;
+
+  const STEPS = 2048;
+  const worldBbox = turf.bboxPolygon([-180, -85.05, 180, 85.05]);
+
+  let accPolygon = pins[0].maxKm === 999999 
+    ? worldBbox 
+    : createSafeCircle([pins[0].coords.lng, pins[0].coords.lat], pins[0].maxKm, STEPS);
+
+  for (let i = 1; i < pins.length; i++) {
+    if (!accPolygon) break;
+    if (pins[i].maxKm === 999999) continue; 
+    
+    const outer = createSafeCircle([pins[i].coords.lng, pins[i].coords.lat], pins[i].maxKm, STEPS);
+    try {
+      accPolygon = turf.intersect(accPolygon, outer);
+    } catch(e) {
+      accPolygon = null;
+    }
+  }
+
+  if (accPolygon) {
+    for (let i = 0; i < pins.length; i++) {
+      if (pins[i].minKm > 0) {
+        const inner = createSafeCircle([pins[i].coords.lng, pins[i].coords.lat], pins[i].minKm, STEPS);
+        try {
+          if (!turf.booleanDisjoint(accPolygon, inner)) {
+            const diff = turf.difference(accPolygon, inner);
+            if (diff) {
+              accPolygon = diff;
+            } else {
+              accPolygon = null;
+              break;
+            }
+          }
+        } catch(e) {}
+      }
+    }
+  }
+
+  if (accPolygon) {
+    intersectionLayer = L.geoJSON(accPolygon, {
+      style: { color: '#facc15', weight: 2, fillColor: '#facc15', fillOpacity: 0.3 }
+    }).addTo(map);
+    intersectionLayer.bringToFront();
+  }
+}
+
+function removePin(id) {
+  const idx = pins.findIndex(p => p.id === id);
+  if (idx < 0) return;
+  
+  pins[idx].layers.forEach(layer => map.removeLayer(layer));
+  pins.splice(idx, 1);
+  
+  updateSidebar();
+  updateIntersection();
+}
+
+function updateSidebar() {
+  pinsList.innerHTML = pins.map(p => {
+    const range = p.maxKm === 999999 ? '> 5000 km' : `${p.minKm} - ${p.maxKm} km`;
+    return `
+    <div class="pin-card">
+      <div class="pin-info">
+        <div class="pin-dot" style="background:${p.color}"></div>
+        <div>
+          <div class="pin-title">${p.name}</div>
+          <div class="pin-sub">${range}</div>
+        </div>
+      </div>
+      <button class="btn-remove" onclick="removePin(${p.id})">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+  
+  if(pins.length === 0) pinsList.innerHTML = '<div style="font-size:0.8rem; color:var(--text-muted)">Nenhum pin adicionado.</div>';
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+</script>
+
+</body>
+</html>
